@@ -1,6 +1,6 @@
 [project]
 name = "langgraph-a2a-client"
-version = "0.1.0"
+version = "0.1.4"
 description = "A2A Protocol Client Tool for LangGraph"
 authors = [
     {name = "5enxia", email = "5enxia@users.noreply.github.com"}
