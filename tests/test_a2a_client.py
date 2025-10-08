@@ -1,6 +1,7 @@
 """Tests for A2A Client Tool Provider."""
 
 import pytest
+import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 from langgraph_a2a_client import A2AClientToolProvider
 
@@ -175,3 +176,103 @@ async def test_ensure_httpx_client(a2a_client):
     # Should return the same instance
     assert client1 is client2
     assert a2a_client._httpx_client is not None
+
+
+@pytest.mark.asyncio
+async def test_authentication_with_headers():
+    """Test A2A client initialization with custom headers."""
+    headers = {"X-API-Key": "test-api-key", "X-Client-ID": "client-123"}
+    client = A2AClientToolProvider(
+        known_agent_urls=["https://example.com/agent"],
+        timeout=10,
+        headers=headers,
+    )
+
+    assert client._headers == headers
+
+    # Verify headers are passed to httpx client
+    httpx_client = await client._ensure_httpx_client()
+    assert httpx_client.headers.get("X-API-Key") == "test-api-key"
+    assert httpx_client.headers.get("X-Client-ID") == "client-123"
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_authentication_with_auth_tuple():
+    """Test A2A client initialization with basic auth tuple."""
+    auth = ("username", "password")
+    client = A2AClientToolProvider(
+        known_agent_urls=["https://example.com/agent"],
+        timeout=10,
+        auth=auth,
+    )
+
+    assert client._auth == auth
+
+    # Verify auth is passed to httpx client
+    httpx_client = await client._ensure_httpx_client()
+    assert httpx_client.auth is not None
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_authentication_with_httpx_auth():
+    """Test A2A client initialization with httpx.BasicAuth."""
+    auth = httpx.BasicAuth("username", "password")
+    client = A2AClientToolProvider(
+        known_agent_urls=["https://example.com/agent"],
+        timeout=10,
+        auth=auth,
+    )
+
+    assert client._auth == auth
+
+    # Verify auth is passed to httpx client
+    httpx_client = await client._ensure_httpx_client()
+    assert httpx_client.auth is not None
+    assert isinstance(httpx_client.auth, httpx.BasicAuth)
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_authentication_with_headers_and_auth():
+    """Test A2A client initialization with both headers and auth."""
+    headers = {"X-API-Key": "test-api-key"}
+    auth = ("username", "password")
+    client = A2AClientToolProvider(
+        known_agent_urls=["https://example.com/agent"],
+        timeout=10,
+        headers=headers,
+        auth=auth,
+    )
+
+    assert client._headers == headers
+    assert client._auth == auth
+
+    # Verify both are passed to httpx client
+    httpx_client = await client._ensure_httpx_client()
+    assert httpx_client.headers.get("X-API-Key") == "test-api-key"
+    assert httpx_client.auth is not None
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_authentication_bearer_token():
+    """Test A2A client initialization with Bearer token."""
+    headers = {"Authorization": "Bearer test-token-123"}
+    client = A2AClientToolProvider(
+        known_agent_urls=["https://example.com/agent"],
+        timeout=10,
+        headers=headers,
+    )
+
+    # Verify headers are passed to httpx client
+    httpx_client = await client._ensure_httpx_client()
+    assert httpx_client.headers.get("Authorization") == "Bearer test-token-123"
+
+    await client.close()
+

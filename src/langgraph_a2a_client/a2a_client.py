@@ -19,6 +19,10 @@ from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import AgentCard, Message, Part, PushNotificationConfig, Role, TextPart
 from langchain_core.tools import StructuredTool
 
+# Type aliases for better type hinting
+HeaderTypes = dict[str, str] | None
+AuthTypes = httpx.Auth | tuple[str, str] | None
+
 DEFAULT_TIMEOUT = 300  # set request timeout to 5 minutes
 
 logger = logging.getLogger(__name__)
@@ -33,6 +37,8 @@ class A2AClientToolProvider:
         timeout: int = DEFAULT_TIMEOUT,
         webhook_url: str | None = None,
         webhook_token: str | None = None,
+        headers: HeaderTypes = None,
+        auth: AuthTypes = None,
     ):
         """
         Initialize A2A client tool provider.
@@ -42,6 +48,8 @@ class A2AClientToolProvider:
             timeout: Timeout for HTTP operations in seconds (defaults to 300)
             webhook_url: Optional webhook URL for push notifications
             webhook_token: Optional authentication token for webhook notifications
+            headers: Optional HTTP headers to include in all requests (e.g., {"X-API-Key": "your-key"})
+            auth: Optional httpx authentication (e.g., httpx.BasicAuth("user", "pass") or ("user", "pass"))
         """
         self.timeout = timeout
         self._known_agent_urls: list[str] = known_agent_urls or []
@@ -49,6 +57,10 @@ class A2AClientToolProvider:
         self._httpx_client: httpx.AsyncClient | None = None
         self._client_factory: ClientFactory | None = None
         self._initial_discovery_done: bool = False
+
+        # Authentication configuration
+        self._headers = headers
+        self._auth = auth
 
         # Push notification configuration
         self._webhook_url = webhook_url
@@ -71,7 +83,11 @@ class A2AClientToolProvider:
     async def _ensure_httpx_client(self) -> httpx.AsyncClient:
         """Ensure the shared HTTP client is initialized."""
         if self._httpx_client is None:
-            self._httpx_client = httpx.AsyncClient(timeout=self.timeout)
+            self._httpx_client = httpx.AsyncClient(
+                timeout=self.timeout,
+                headers=self._headers,
+                auth=self._auth,
+            )
         return self._httpx_client
 
     async def _ensure_client_factory(self) -> ClientFactory:

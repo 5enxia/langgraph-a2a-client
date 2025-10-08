@@ -34,7 +34,8 @@ a2a_client = A2AClientToolProvider(
     known_agent_urls=["https://example.com/agent"],
     timeout=300,
     webhook_url="https://your-webhook.com/notify",
-    webhook_token="your-webhook-token"
+    webhook_token="your-webhook-token",
+    headers={"X-API-Key": "your-api-key"}  # Optional: Custom headers for authentication
 )
 
 # Get the tools for use in LangGraph
@@ -56,6 +57,8 @@ Main class that provides A2A client functionality.
 - `timeout` (int): Timeout for HTTP operations in seconds (default: 300)
 - `webhook_url` (str | None): Optional webhook URL for push notifications
 - `webhook_token` (str | None): Optional authentication token for webhook notifications
+- `headers` (dict[str, str] | None): Optional HTTP headers to include in all requests (e.g., `{"X-API-Key": "your-key"}`)
+- `auth` (httpx.Auth | tuple[str, str] | None): Optional httpx authentication (e.g., `httpx.BasicAuth("user", "pass")` or `("user", "pass")`)
 
 #### Tools
 
@@ -64,6 +67,57 @@ The provider exposes three tools:
 1. **a2a_discover_agent**: Discover an A2A agent and return its agent card
 2. **a2a_list_discovered_agents**: List all discovered A2A agents and their capabilities
 3. **a2a_send_message**: Send a message to a specific A2A agent
+
+### Authentication
+
+The client supports multiple authentication methods through HTTP headers:
+
+#### API Key Authentication
+
+```python
+a2a_client = A2AClientToolProvider(
+    known_agent_urls=["https://example.com/agent"],
+    headers={"X-API-Key": "your-api-key"}
+)
+```
+
+#### Bearer Token Authentication
+
+```python
+a2a_client = A2AClientToolProvider(
+    known_agent_urls=["https://example.com/agent"],
+    headers={"Authorization": "Bearer your-token"}
+)
+```
+
+#### Basic Authentication
+
+```python
+import httpx
+
+a2a_client = A2AClientToolProvider(
+    known_agent_urls=["https://example.com/agent"],
+    auth=httpx.BasicAuth("username", "password")
+)
+
+# Or using tuple shorthand
+a2a_client = A2AClientToolProvider(
+    known_agent_urls=["https://example.com/agent"],
+    auth=("username", "password")
+)
+```
+
+#### Custom Headers
+
+```python
+a2a_client = A2AClientToolProvider(
+    known_agent_urls=["https://example.com/agent"],
+    headers={
+        "X-Custom-Header": "custom-value",
+        "X-Client-ID": "client-123"
+    }
+)
+```
 
 ## Examples
 
