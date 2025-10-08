@@ -127,6 +127,12 @@ a2a_client = A2AClientToolProvider(
 uv run examples/basic_usage.py
 ```
 
+### Authentication Usage
+
+```sh
+uv run examples/authentication_usage.py
+```
+
 ### Supervisor Agent Example
 
 ```sh
