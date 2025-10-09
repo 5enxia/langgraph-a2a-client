@@ -19,10 +19,6 @@ from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import AgentCard, Message, Part, PushNotificationConfig, Role, TextPart
 from langchain_core.tools import StructuredTool
 
-# Type aliases for better type hinting
-HeaderTypes = dict[str, str] | None
-AuthTypes = httpx.Auth | tuple[str, str] | None
-
 DEFAULT_TIMEOUT = 300  # set request timeout to 5 minutes
 
 logger = logging.getLogger(__name__)
@@ -37,8 +33,7 @@ class A2AClientToolProvider:
         timeout: int = DEFAULT_TIMEOUT,
         webhook_url: str | None = None,
         webhook_token: str | None = None,
-        headers: HeaderTypes = None,
-        auth: AuthTypes = None,
+        headers: dict[str, dict[str, str]] | None = None,
     ):
         """
         Initialize A2A client tool provider.
@@ -48,19 +43,18 @@ class A2AClientToolProvider:
             timeout: Timeout for HTTP operations in seconds (defaults to 300)
             webhook_url: Optional webhook URL for push notifications
             webhook_token: Optional authentication token for webhook notifications
-            headers: Optional HTTP headers to include in all requests (e.g., {"X-API-Key": "your-key"})
-            auth: Optional httpx authentication (e.g., httpx.BasicAuth("user", "pass") or ("user", "pass"))
+            headers: Optional per-URL HTTP headers for authentication. 
+                Format: {"https://agent-url.com": {"X-API-Key": "key123", "Authorization": "Bearer token"}}
         """
         self.timeout = timeout
         self._known_agent_urls: list[str] = known_agent_urls or []
         self._discovered_agents: dict[str, AgentCard] = {}
-        self._httpx_client: httpx.AsyncClient | None = None
+        self._httpx_clients: dict[str, httpx.AsyncClient] = {}  # Per-URL clients
         self._client_factory: ClientFactory | None = None
         self._initial_discovery_done: bool = False
 
-        # Authentication configuration
-        self._headers = headers
-        self._auth = auth
+        # Authentication configuration - per-URL headers
+        self._headers_config = headers or {}
 
         # Push notification configuration
         self._webhook_url = webhook_url
@@ -80,20 +74,21 @@ class A2AClientToolProvider:
         tools = [StructuredTool.from_function(coroutine=tool_func) for tool_func in _tools]
         return tools
 
-    async def _ensure_httpx_client(self) -> httpx.AsyncClient:
-        """Ensure the shared HTTP client is initialized."""
-        if self._httpx_client is None:
-            self._httpx_client = httpx.AsyncClient(
+    async def _ensure_httpx_client(self, url: str) -> httpx.AsyncClient:
+        """Ensure an HTTP client for the specific URL is initialized."""
+        if url not in self._httpx_clients:
+            # Get headers for this specific URL, if configured
+            headers = self._headers_config.get(url, None)
+            self._httpx_clients[url] = httpx.AsyncClient(
                 timeout=self.timeout,
-                headers=self._headers,
-                auth=self._auth,
+                headers=headers,
             )
-        return self._httpx_client
+        return self._httpx_clients[url]
 
-    async def _ensure_client_factory(self) -> ClientFactory:
-        """Ensure the ClientFactory is initialized."""
+    async def _ensure_client_factory(self, url: str) -> ClientFactory:
+        """Ensure the ClientFactory is initialized for a specific URL."""
         if self._client_factory is None:
-            httpx_client = await self._ensure_httpx_client()
+            httpx_client = await self._ensure_httpx_client(url)
             config = ClientConfig(
                 httpx_client=httpx_client,
                 streaming=False,  # Use non-streaming mode for simpler response handling
@@ -104,7 +99,7 @@ class A2AClientToolProvider:
 
     async def _create_a2a_card_resolver(self, url: str) -> A2ACardResolver:
         """Create a new A2A card resolver for the given URL."""
-        httpx_client = await self._ensure_httpx_client()
+        httpx_client = await self._ensure_httpx_client(url)
         logger.info(f"A2ACardResolver created for {url}")
         return A2ACardResolver(httpx_client=httpx_client, base_url=url)
 
@@ -234,7 +229,7 @@ class A2AClientToolProvider:
 
             # Get the agent card and create client using factory
             agent_card = await self._discover_agent_card(target_agent_url)
-            client_factory = await self._ensure_client_factory()
+            client_factory = await self._ensure_client_factory(target_agent_url)
             client = client_factory.create(agent_card)
 
             if message_id is None:
@@ -300,10 +295,10 @@ class A2AClientToolProvider:
             }
 
     async def close(self) -> None:
-        """Close the HTTP client and clean up resources."""
-        if self._httpx_client is not None:
-            await self._httpx_client.aclose()
-            self._httpx_client = None
+        """Close all HTTP clients and clean up resources."""
+        for client in self._httpx_clients.values():
+            await client.aclose()
+        self._httpx_clients.clear()
         self._client_factory = None
 
     async def __aenter__(self):

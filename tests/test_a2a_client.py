@@ -1,7 +1,6 @@
 """Tests for A2A Client Tool Provider."""
 
 import pytest
-import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 from langgraph_a2a_client import A2AClientToolProvider
 
@@ -180,18 +179,19 @@ async def test_ensure_httpx_client(a2a_client):
 
 @pytest.mark.asyncio
 async def test_authentication_with_headers():
-    """Test A2A client initialization with custom headers."""
-    headers = {"X-API-Key": "test-api-key", "X-Client-ID": "client-123"}
+    """Test A2A client initialization with per-URL custom headers."""
+    url = "https://example.com/agent"
+    headers_config = {url: {"X-API-Key": "test-api-key", "X-Client-ID": "client-123"}}
     client = A2AClientToolProvider(
-        known_agent_urls=["https://example.com/agent"],
+        known_agent_urls=[url],
         timeout=10,
-        headers=headers,
+        headers=headers_config,
     )
 
-    assert client._headers == headers
+    assert client._headers_config == headers_config
 
-    # Verify headers are passed to httpx client
-    httpx_client = await client._ensure_httpx_client()
+    # Verify headers are passed to httpx client for the specific URL
+    httpx_client = await client._ensure_httpx_client(url)
     assert httpx_client.headers.get("X-API-Key") == "test-api-key"
     assert httpx_client.headers.get("X-Client-ID") == "client-123"
 
@@ -199,80 +199,46 @@ async def test_authentication_with_headers():
 
 
 @pytest.mark.asyncio
-async def test_authentication_with_auth_tuple():
-    """Test A2A client initialization with basic auth tuple."""
-    auth = ("username", "password")
-    client = A2AClientToolProvider(
-        known_agent_urls=["https://example.com/agent"],
-        timeout=10,
-        auth=auth,
-    )
-
-    assert client._auth == auth
-
-    # Verify auth is passed to httpx client
-    httpx_client = await client._ensure_httpx_client()
-    assert httpx_client.auth is not None
-
-    await client.close()
-
-
-@pytest.mark.asyncio
-async def test_authentication_with_httpx_auth():
-    """Test A2A client initialization with httpx.BasicAuth."""
-    auth = httpx.BasicAuth("username", "password")
-    client = A2AClientToolProvider(
-        known_agent_urls=["https://example.com/agent"],
-        timeout=10,
-        auth=auth,
-    )
-
-    assert client._auth == auth
-
-    # Verify auth is passed to httpx client
-    httpx_client = await client._ensure_httpx_client()
-    assert httpx_client.auth is not None
-    assert isinstance(httpx_client.auth, httpx.BasicAuth)
-
-    await client.close()
-
-
-@pytest.mark.asyncio
-async def test_authentication_with_headers_and_auth():
-    """Test A2A client initialization with both headers and auth."""
-    headers = {"X-API-Key": "test-api-key"}
-    auth = ("username", "password")
-    client = A2AClientToolProvider(
-        known_agent_urls=["https://example.com/agent"],
-        timeout=10,
-        headers=headers,
-        auth=auth,
-    )
-
-    assert client._headers == headers
-    assert client._auth == auth
-
-    # Verify both are passed to httpx client
-    httpx_client = await client._ensure_httpx_client()
-    assert httpx_client.headers.get("X-API-Key") == "test-api-key"
-    assert httpx_client.auth is not None
-
-    await client.close()
-
-
-@pytest.mark.asyncio
 async def test_authentication_bearer_token():
-    """Test A2A client initialization with Bearer token."""
-    headers = {"Authorization": "Bearer test-token-123"}
+    """Test A2A client initialization with Bearer token per URL."""
+    url = "https://example.com/agent"
+    headers_config = {url: {"Authorization": "Bearer test-token-123"}}
     client = A2AClientToolProvider(
-        known_agent_urls=["https://example.com/agent"],
+        known_agent_urls=[url],
         timeout=10,
-        headers=headers,
+        headers=headers_config,
     )
 
     # Verify headers are passed to httpx client
-    httpx_client = await client._ensure_httpx_client()
+    httpx_client = await client._ensure_httpx_client(url)
     assert httpx_client.headers.get("Authorization") == "Bearer test-token-123"
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_authentication_multiple_urls():
+    """Test A2A client with different headers for different URLs."""
+    url1 = "https://agent1.example.com"
+    url2 = "https://agent2.example.com"
+    headers_config = {
+        url1: {"X-API-Key": "key-for-agent1"},
+        url2: {"X-API-Key": "key-for-agent2", "X-Custom": "value"},
+    }
+    client = A2AClientToolProvider(
+        known_agent_urls=[url1, url2],
+        timeout=10,
+        headers=headers_config,
+    )
+
+    # Verify each URL gets its own headers
+    httpx_client1 = await client._ensure_httpx_client(url1)
+    assert httpx_client1.headers.get("X-API-Key") == "key-for-agent1"
+    assert httpx_client1.headers.get("X-Custom") is None
+
+    httpx_client2 = await client._ensure_httpx_client(url2)
+    assert httpx_client2.headers.get("X-API-Key") == "key-for-agent2"
+    assert httpx_client2.headers.get("X-Custom") == "value"
 
     await client.close()
 
