@@ -50,7 +50,7 @@ class A2AClientToolProvider:
         self._known_agent_urls: list[str] = known_agent_urls or []
         self._discovered_agents: dict[str, AgentCard] = {}
         self._httpx_clients: dict[str, httpx.AsyncClient] = {}  # Per-URL clients
-        self._client_factory: ClientFactory | None = None
+        self._client_factories: dict[str, ClientFactory] = {}  # Per-URL factories
         self._initial_discovery_done: bool = False
 
         # Authentication configuration - per-URL headers
@@ -87,15 +87,15 @@ class A2AClientToolProvider:
 
     async def _ensure_client_factory(self, url: str) -> ClientFactory:
         """Ensure the ClientFactory is initialized for a specific URL."""
-        if self._client_factory is None:
+        if url not in self._client_factories:
             httpx_client = await self._ensure_httpx_client(url)
             config = ClientConfig(
                 httpx_client=httpx_client,
                 streaming=False,  # Use non-streaming mode for simpler response handling
                 push_notification_configs=[self._push_config] if self._push_config else [],
             )
-            self._client_factory = ClientFactory(config)
-        return self._client_factory
+            self._client_factories[url] = ClientFactory(config)
+        return self._client_factories[url]
 
     async def _create_a2a_card_resolver(self, url: str) -> A2ACardResolver:
         """Create a new A2A card resolver for the given URL."""
@@ -299,7 +299,7 @@ class A2AClientToolProvider:
         for client in self._httpx_clients.values():
             await client.aclose()
         self._httpx_clients.clear()
-        self._client_factory = None
+        self._client_factories.clear()
 
     async def __aenter__(self):
         """Async context manager entry."""
