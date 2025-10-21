@@ -158,23 +158,25 @@ async def test_send_message_error(a2a_client):
 async def test_context_manager():
     """Test async context manager functionality."""
     async with A2AClientToolProvider() as client:
-        assert client._httpx_client is None  # Not initialized yet
+        assert len(client._httpx_clients) == 0  # Not initialized yet
         tools = client.tools
         assert len(tools) == 3
 
     # After exiting context, resources should be cleaned up
-    assert client._httpx_client is None
+    assert len(client._httpx_clients) == 0
 
 
 @pytest.mark.asyncio
 async def test_ensure_httpx_client(a2a_client):
     """Test HTTP client initialization."""
-    client1 = await a2a_client._ensure_httpx_client()
-    client2 = await a2a_client._ensure_httpx_client()
+    test_url = "https://example.com/agent"
+    client1 = await a2a_client._ensure_httpx_client(test_url)
+    client2 = await a2a_client._ensure_httpx_client(test_url)
 
-    # Should return the same instance
+    # Should return the same instance for the same URL
     assert client1 is client2
-    assert a2a_client._httpx_client is not None
+    assert test_url in a2a_client._httpx_clients
+    assert a2a_client._httpx_clients[test_url] is not None
 
 
 @pytest.mark.asyncio
